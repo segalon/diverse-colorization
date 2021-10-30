@@ -1,6 +1,8 @@
 # diverse-colorization
 This project explores diverse colorization of anime sketches.
+
 The dataset:
+
 https://www.kaggle.com/ktaebum/anime-sketch-colorization-pair
 
 The colorization works as follows:
@@ -10,7 +12,9 @@ The colorization works as follows:
 
 Some results on the validation:
 The ground truch colorization and the sketch:
-![alt text](https://github.com/segalon/diverse-colorization/tree/main/colorizations/sk1_1527061.png?raw=true)
+![alt text](/colorizations/sk1_1527061.png?raw=true)
 The 32 colorizations:
-![alt text](https://github.com/segalon/diverse-colorization/tree/main/colorizations/grid_32_1.png?raw=true)
+![alt text](/colorizations/grid_32_1.png?raw=true)
+
+
 
