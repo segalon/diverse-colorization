@@ -11,6 +11,7 @@ The colorization works as follows:
 3. In order to encourage all of the N predictions to be used, at the end of every epoch, check every group of 3 kernels which correspond to 3(RGB) feature maps in the colorization, if a group of kernels was not updated from the previous epoch, this means that its corresponding colorization isn't used and their colorization is probably bad, therefore - copy the weights from some different group of kernels which their weights have been updated during the epoch. At the start it will produce identical colorization, but because these kernels now produce colorizations which are the closest to some of the GT, the kernels weights will be updated and the colorizations will diverge from the ones produced from the copied kernels.
 
 Remark: the training was not performed until convergence due to a lack of computational resources, 150 epochs were performed.
+The code is a bit messy and condensed as I programmed on a Google Collab Jupyter notebook.
 
 A ground truth colorization and the sketch from the validation set:
 
