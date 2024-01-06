@@ -9,7 +9,7 @@ import torch.nn as nn
 import torchvision.transforms.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision.utils import save_image
-from torchvision import transforms, utils
+from torchvision import transforms
 import matplotlib.pyplot as plt
 import wandb
 import matplotlib
@@ -37,7 +37,6 @@ def read_sk(path):
     return img_pd_right.convert('L'), img_pd_left
 
 
-# dataset class
 class AnimeDataset(Dataset):
     """Anime dataset."""
 
@@ -165,7 +164,6 @@ class UnetGenerator(nn.Module):
         super(UnetGenerator, self).__init__()
         # construct unet structure
 
-        i = 0
         output_padding = 0
         unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, kernel_size=kernel_size,
                                              output_padding=output_padding,
@@ -286,7 +284,6 @@ def get_target_tensor(prediction, target_is_real):
 
 
 def generator_loss(colored_real, colored_fake, device, n_preds, H=256, W=256):
-    bce_loss = nn.BCEWithLogitsLoss()
     l1_loss = torch.nn.L1Loss()
 
     # colored_real B x C x H x W
@@ -329,15 +326,6 @@ def copy_kernels(G, prev_weights, n_preds=96):
                 fixed_idxs.append(idx)
             else:
                 changed_idxs.append(idx)
-
-        print("-" * 10)
-        print("fixed idxs")
-        print(len(fixed_idxs))
-        print(fixed_idxs)
-        print("changed idxs")
-        print(len(changed_idxs))
-        print(changed_idxs)
-        print("-" * 10)
 
         for f_idx in fixed_idxs:
             if len(changed_idxs) > 0:
@@ -410,7 +398,6 @@ def train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, ba
         g_list_losses.append(running_g_loss)
 
         disp_batch_size = 1
-        # idxs_val = [0, 300, 179, 220] + random.sample(range(0, len(val_data)), 4)
         idxs_val = random.sample(range(0, len(val_data)), 1)
         print("idxs_val:")
         print(idxs_val)
@@ -420,7 +407,6 @@ def train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, ba
         path = os.path.join(preds_save_dir, "images_val_epoch={}_i={}.png".format(epoch, i))
         pred_and_save(G, val_dataloader, path, device)
 
-        # idxs_train = [0, 300, 179, 220, 500, 600, 2000, 4000]
         idxs_train = random.sample(range(0, len(training_data)), 1)
 
         train_subset_data = torch.utils.data.Subset(training_data, idxs_train)
@@ -479,32 +465,32 @@ if __name__ == "__main__":
 
     lr = 0.0002
     beta1 = 0.5
-
-    preds_save_path = args.preds_path
-    start_epoch = args.start_epoch
-
-    gen_loss = generator_loss
+    beta2 = 0.999
 
     batch_size = 16
     n_preds = 32
     n_layers = 8
     ngf = 130
 
+    preds_save_path = args.preds_path
+    start_epoch = args.start_epoch
+
+    gen_loss = generator_loss
+
     print("ngf:", ngf)
     print("batch_size:", batch_size)
 
+    G = UnetGenerator(1, 3, n_layers, kernel_size=4, stride=2, ngf=ngf, n_preds=n_preds)
     if args.G_path == "":
         print("New G")
-        G = UnetGenerator(1, 3, n_layers, kernel_size=4, stride=2, ngf=ngf, n_preds=n_preds)
     else:
         print("Loading G")
-        G = UnetGenerator(1, 3, n_layers, kernel_size=4, stride=2, ngf=ngf, n_preds=n_preds)
         G.load_state_dict(torch.load(args.G_path))
 
     pytorch_total_params = sum(p.numel() for p in G.parameters())
     print("number of model parameters:", pytorch_total_params)
 
-    g_optimizer = torch.optim.Adam(G.parameters(), lr=lr, betas=(beta1, 0.999))
+    g_optimizer = torch.optim.Adam(G.parameters(), lr=lr, betas=(beta1, beta2))
 
     train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, batch_size, args.preds_path,
                n_preds=n_preds,
