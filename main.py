@@ -1,56 +1,40 @@
-import argparse
-import wandb
 import os
-
-import torchvision.transforms.functional as F
-
-import pandas as pd
-from skimage import io, transform
-import numpy as np
-import torchvision
-import matplotlib.pyplot as plt
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms, utils
-from PIL import Image, ImageOps
-from torchvision.utils import save_image
 import random
+import argparse
 
-from skimage import feature
-
+from PIL import Image, ImageOps
+import numpy as np
 import torch
-import matplotlib.pyplot as plt
-from PIL import Image
-import cv2
-
-from torch.utils.data import Dataset
-
-from os import listdir
-from os.path import isfile, join
-
 import torch.nn as nn
+import torchvision.transforms.functional as F
+from torch.utils.data import Dataset, DataLoader
+from torchvision.utils import save_image
+from torchvision import transforms, utils
+import matplotlib.pyplot as plt
+import wandb
+import matplotlib
 import functools
 
 torch.manual_seed(12)
-import matplotlib
 matplotlib.use('Agg')
 
 
 def read_sk(path):
-  desired_size = (256, 256)
+    desired_size = (256, 256)
 
-  img = Image.open(path)
-  w,h = img.size
+    img = Image.open(path)
+    w, h = img.size
 
-  img_left_area = (0, 0, w / 2, h)
-  img_right_area = (w / 2, 0, w, h)
+    img_left_area = (0, 0, w / 2, h)
+    img_right_area = (w / 2, 0, w, h)
 
-  img_left = img.crop(img_left_area)
-  img_right = img.crop(img_right_area)
+    img_left = img.crop(img_left_area)
+    img_right = img.crop(img_right_area)
 
-  img_pd_left = ImageOps.pad(img_left, desired_size)
-  img_pd_right = ImageOps.pad(img_right, desired_size)
+    img_pd_left = ImageOps.pad(img_left, desired_size)
+    img_pd_right = ImageOps.pad(img_right, desired_size)
 
-  return img_pd_right.convert('L'), img_pd_left
+    return img_pd_right.convert('L'), img_pd_left
 
 
 # dataset class
@@ -67,25 +51,19 @@ class AnimeDataset(Dataset):
         self.root_dir = root_dir
         self.gs_transform = gs_transform
         self.cl_transform = cl_transform
-        #self.name_list = os.listdir(os.path.join(root_dir, colored_name))
         self.name_list = os.listdir(root_dir)
         self.data_size = len(self.name_list)
-        #self.colored = colored_name
 
     def __len__(self):
         return self.data_size
 
     def __getitem__(self, idx):
-        # check that idx is a scalar
         colored_img_path = os.path.join(self.root_dir, self.name_list[idx])
         prefix = self.name_list[idx].split("_")[0]
         if prefix == "sk1":
-          gray_image, colored_image = read_sk(colored_img_path)
+            gray_image, colored_image = read_sk(colored_img_path)
         else:
-	  # not used in the particular project
-	  continue
-
-          colored_image = Image.open(colored_img_path)
+            colored_image = Image.open(colored_img_path)
         if self.gs_transform:
             gray_image = self.gs_transform(gray_image)
         if self.cl_transform:
@@ -94,20 +72,19 @@ class AnimeDataset(Dataset):
         return gray_image, colored_image, colored_img_path
 
 
-i = 0
 class UnetSkipConnectionBlock(nn.Module):
     """Defines the Unet submodule with skip connection.
         X -------------------identity----------------------
         |-- downsampling -- |submodule| -- upsampling --|
     """
 
-    def __init__(self, outer_nc, inner_nc, n_preds=1, kernel_size=4, stride=2, output_padding=(0,0), input_nc=None,
+    def __init__(self, outer_nc, inner_nc, n_preds=1, kernel_size=4, stride=2, output_padding=(0, 0), input_nc=None,
                  submodule=None, outermost=False, innermost=False, norm_layer=nn.BatchNorm2d, use_dropout=False):
         """Construct a Unet submodule with skip connections.
         Parameters:
             outer_nc (int) -- the number of filters in the outer conv layer
             inner_nc (int) -- the number of filters in the inner conv layer
-            input_nc (int) -- the number of channels in input images/features
+            input_nc (int) -- the number of channels in x images/features
             submodule (UnetSkipConnectionBlock) -- previously defined submodules
             outermost (bool)    -- if this module is the outermost module
             innermost (bool)    -- if this module is the innermost module
@@ -161,19 +138,22 @@ class UnetSkipConnectionBlock(nn.Module):
     def forward(self, x):
         if self.outermost:
             return self.model(x)
-        else:   # add skip connections
+        else:  # add skip connections
             out = self.model(x)
             return torch.cat([x, out], 1)
+
 
 # modified version of https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/master/models/networks.py
 class UnetGenerator(nn.Module):
     """Create a Unet-based generator"""
+
     # in our case input_nc=1, output_nc=3, num_downs=7?
 
-    def __init__(self, input_nc, output_nc, num_downs, n_preds=1, kernel_size=4, stride=2, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
+    def __init__(self, input_nc, output_nc, num_downs, n_preds=1, kernel_size=4, stride=2, ngf=64,
+                 norm_layer=nn.BatchNorm2d, use_dropout=False):
         """Construct a Unet generator
         Parameters:
-            input_nc (int)  -- the number of channels in input images
+            input_nc (int)  -- the number of channels in x images
             output_nc (int) -- the number of channels in output images
             num_downs (int) -- the number of downsamplings in UNet. For example, # if |num_downs| == 7,
                                 image of size 128x128 will become of size 1x1 # at the bottleneck
@@ -186,30 +166,33 @@ class UnetGenerator(nn.Module):
         # construct unet structure
 
         i = 0
-        output_padding=0
-        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, kernel_size=kernel_size, 
+        output_padding = 0
+        unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, kernel_size=kernel_size,
                                              output_padding=output_padding,
-                                             stride=stride, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)  # add the innermost layer
+                                             stride=stride, input_nc=None, submodule=None, norm_layer=norm_layer,
+                                             innermost=True)  # add the innermost layer
 
-        for i in range(num_downs - 5):          # add intermediate layers with ngf * 8 filters
-            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, kernel_size=kernel_size, 
-                                                 output_padding=output_padding, 
-                                                 stride=stride, input_nc=None, submodule=unet_block, norm_layer=norm_layer, use_dropout=use_dropout)
+        for i in range(num_downs - 5):  # add intermediate layers with ngf * 8 filters
+            unet_block = UnetSkipConnectionBlock(ngf * 8, ngf * 8, kernel_size=kernel_size,
+                                                 output_padding=output_padding,
+                                                 stride=stride, input_nc=None, submodule=unet_block,
+                                                 norm_layer=norm_layer, use_dropout=use_dropout)
             i += 1
         # gradually reduce the number of filters from ngf * 8 to ngf
 
-        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, kernel_size=kernel_size, 
-                                             output_padding=output_padding, 
+        unet_block = UnetSkipConnectionBlock(ngf * 4, ngf * 8, kernel_size=kernel_size,
+                                             output_padding=output_padding,
                                              stride=stride, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, kernel_size=kernel_size, 
-                                             output_padding=output_padding, 
+        unet_block = UnetSkipConnectionBlock(ngf * 2, ngf * 4, kernel_size=kernel_size,
+                                             output_padding=output_padding,
                                              stride=stride, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
-        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, kernel_size=kernel_size, 
+        unet_block = UnetSkipConnectionBlock(ngf, ngf * 2, kernel_size=kernel_size,
                                              output_padding=output_padding,
                                              stride=stride, input_nc=None, submodule=unet_block, norm_layer=norm_layer)
         self.model = UnetSkipConnectionBlock(output_nc, ngf, n_preds=n_preds, kernel_size=kernel_size,
                                              output_padding=output_padding,
-                                             stride=stride, input_nc=input_nc, submodule=unet_block, outermost=True, norm_layer=norm_layer)  # add the outermost layer
+                                             stride=stride, input_nc=input_nc, submodule=unet_block, outermost=True,
+                                             norm_layer=norm_layer)  # add the outermost layer
 
     def forward(self, input):
         """Standard forward"""
@@ -222,7 +205,7 @@ class NLayerDiscriminator(nn.Module):
     def __init__(self, input_nc=4, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d):
         """Construct a PatchGAN discriminator
         Parameters:
-            input_nc (int)  -- the number of channels in input images
+            input_nc (int)  -- the number of channels in x images
             ndf (int)       -- the number of filters in the last conv layer
             n_layers (int)  -- the number of conv layers in the discriminator
             norm_layer      -- normalization layer
@@ -237,7 +220,6 @@ class NLayerDiscriminator(nn.Module):
         padw = 1
         sequence = [nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]
         nf_mult = 1
-        nf_mult_prev = 1
         for n in range(1, n_layers):  # gradually increase the number of filters
             nf_mult_prev = nf_mult
             nf_mult = min(2 ** n, 8)
@@ -255,106 +237,79 @@ class NLayerDiscriminator(nn.Module):
             nn.LeakyReLU(0.2, True)
         ]
 
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
+        sequence += [
+            nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
         self.model = nn.Sequential(*sequence)
 
-    def forward(self, input):
+    def forward(self, x):
         """Standard forward."""
-        return self.model(input)
+        return self.model(x)
+
 
 def denorm(img):
-  denorm_img = ((img + 1) / 2)
-  return denorm_img
-
-def pred_and_save(model, dataloader, path, device):
-  print("saving generated images")
-  model.eval()
-  with torch.no_grad():
-      it = iter(dataloader)
-      grayscale, colored_real, _ = next(it)
-      grayscale = grayscale.to(device)
-      imgs_pred = denorm(model(grayscale))
-      colored_real = denorm(colored_real.to(device))
-      grayscale = denorm(grayscale)
+    denorm_img = ((img + 1) / 2)
+    return denorm_img
 
 
-      # imgs_gs_1 = grayscale[0:4]
-      # imgs_gs_2 = grayscale[4:8]
-      # imgs_pred1 = imgs_pred[0:4]
-      # imgs_pred2 = imgs_pred[4:8]
-      # imgs_cl_1 = colored_real[0:4]
-      # imgs_cl_2 = colored_real[4:8]
+def pred_and_save(model, dataloader, path, device, img_dim=256):
+    print("saving generated images")
+    model.eval()
+    with torch.no_grad():
+        it = iter(dataloader)
+        grayscale, colored_real, _ = next(it)
+        grayscale = grayscale.to(device)
+        img_pred = denorm(model(grayscale))
 
-      # grid_gs_1 = torchvision.utils.make_grid(imgs_gs_1)
-      # grid_cl_1 = torchvision.utils.make_grid(imgs_cl_1)
-      # grid_ps_1 = torchvision.utils.make_grid(imgs_pred1)
+        img = img_pred
+        img = img.reshape(-1, 3, img_dim, img_dim)
 
-      # grid_gs_2 = torchvision.utils.make_grid(imgs_gs_2)
-      # grid_cl_2 = torchvision.utils.make_grid(imgs_cl_2)
-      # grid_ps_2 = torchvision.utils.make_grid(imgs_pred2)
+        save_image(img, path)
 
-      # grid_1 = torch.cat((grid_gs_1, grid_ps_1, grid_cl_1), axis=1)
-      # grid_2 = torch.cat((grid_gs_2, grid_ps_2, grid_cl_2), axis=1)
+        name = path.split("/")[-1]
+        wandb.log({name: wandb.Image(path)})
 
-      # grid_res = torch.cat((grid_1, grid_2), axis=1)
-      # img = grid_res
-
-      # #imgs_pred_gt = torch.cat((imgs, colored_real), axis=2) # stack prediction and GT
-      
-
-      # ---- with multiple predictions ----
-
-      img = imgs_pred
-      img = img.reshape(-1, 3, 256, 256) 
-
-      save_image(img, path)
-
-      name = path.split("/")[-1]
-      wandb.log({name: wandb.Image(path)})
 
 def get_target_tensor(prediction, target_is_real):
-  """Create label tensors with the same size as the input.
+    """Create label tensors with the same size as the x.
   Parameters:
       prediction (tensor) - - tpyically the prediction from a discriminator
       target_is_real (bool) - - if the ground truth label is for real images or fake images
   Returns:
-      A label tensor filled with ground truth label, and with the size of the input
+      A label tensor filled with ground truth label, and with the size of the x
   """
 
-  if target_is_real:
-      target_tensor = torch.Tensor([1.0])
-  else:
-      target_tensor = torch.Tensor([0.0])
-  return target_tensor.expand_as(prediction)
+    if target_is_real:
+        target_tensor = torch.Tensor([1.0])
+    else:
+        target_tensor = torch.Tensor([0.0])
+    return target_tensor.expand_as(prediction)
 
 
-def generator_loss(colored_real, colored_fake, device, n_preds):
+def generator_loss(colored_real, colored_fake, device, n_preds, H=256, W=256):
+    bce_loss = nn.BCEWithLogitsLoss()
+    l1_loss = torch.nn.L1Loss()
 
-  bce_loss = nn.BCEWithLogitsLoss()
-  l1_loss = torch.nn.L1Loss()
+    # colored_real B x C x H x W
+    # colored_fake B x M x C x H x W
 
-  # colored_real B x C x H x W
-  # colored_fake B x M x C x H x W
+    if n_preds > 1:
+        # B x C * M x H x W => B x M x C x H x W
+        colored_fake = colored_fake.reshape(-1, n_preds, 3, H, W)
+        colored_real = colored_real.unsqueeze(1)  # B x C x H x W =>  B x 1 x C x H x W
+        diff = torch.abs(colored_real - colored_fake)
+        diff_avg = diff.mean(dim=(2, 3, 4))  # B x M
+        diff_mins = torch.min(diff_avg, dim=1)[0]  # B
+        loss_l1_res = diff_mins.mean()
 
-  if n_preds > 1:
-    # B x C*M x H x W => B x M x C x H x W
-    H = 256
-    W = 256
-    colored_fake = colored_fake.reshape(-1, n_preds, 3, H, W)
-    colored_real = colored_real.unsqueeze(1) # B x C x H x W =>  B x 1 x C x H x W 
-    diff = torch.abs(colored_real - colored_fake) 
-    diff_avg = diff.mean(dim=(2, 3, 4)) # B x M 
-    diff_mins = torch.min(diff_avg, dim=1)[0] # B
-    loss_l1_res = diff_mins.mean()
+    else:
+        loss_l1_res = l1_loss(colored_fake, colored_real)
 
-  else:
-    loss_l1_res = l1_loss(colored_fake, colored_real)
+    loss_G = loss_l1_res
+    return loss_G
 
-  loss_G = loss_l1_res
-  return loss_G
 
 def reset_grad(g_opt, d_opt):
-  g_opt.zero_grad()
+    g_opt.zero_grad()
 
 
 def copy_kernels(G, prev_weights, n_preds=96):
@@ -375,28 +330,26 @@ def copy_kernels(G, prev_weights, n_preds=96):
             else:
                 changed_idxs.append(idx)
 
-        print("-"*10)
+        print("-" * 10)
         print("fixed idxs")
         print(len(fixed_idxs))
         print(fixed_idxs)
         print("changed idxs")
         print(len(changed_idxs))
         print(changed_idxs)
-        print("-"*10)
+        print("-" * 10)
 
         for f_idx in fixed_idxs:
             if len(changed_idxs) > 0:
                 idx_cp_from = random.sample(changed_idxs, 1)[0]
-                state_dict[layer_name][:, f_idx: f_idx + 3, :, :] = state_dict[layer_name][:, idx_cp_from: idx_cp_from + 3, :, :]
+                state_dict[layer_name][:, f_idx: f_idx + 3, :, :] = state_dict[layer_name][:,
+                                                                    idx_cp_from: idx_cp_from + 3, :, :]
                 n_copied += 1
             else:
                 print("len(changed_idxs)==0")
 
     G.load_state_dict(state_dict)
     print("Copied {} kernels".format(n_copied))
-
-
-
 
 
 def create_transforms():
@@ -407,15 +360,14 @@ def create_transforms():
 
 
 def train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, batch_size,
-        preds_save_dir, pth_path, n_preds=1, start_epoch=0):
-
+               preds_save_dir, pth_path, n_preds=1, start_epoch=0):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Device: {}".format(device))
 
     with torch.no_grad():
         layer_name = 'model.model.3.weight'
         prev_weights = G.state_dict()[layer_name].clone()
- 
+
     train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
 
     # Start training
@@ -443,22 +395,22 @@ def train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, ba
             running_g_loss += g_loss
 
             print_every = 2
-            if (i+1) % print_every == 0:
-              print("epoch:", epoch)
-              print("step: [{}/{}]".format(i, total_step))
-              print("G loss:", g_loss)
-              print("-"*10)
+            if (i + 1) % print_every == 0:
+                print("epoch:", epoch)
+                print("step: [{}/{}]".format(i, total_step))
+                print("G loss:", g_loss)
+                print("-" * 10)
 
         if (epoch + 1) % 50 == 0:
-          torch.save(G.state_dict(), os.path.join(pth_path, "G_mpreds_{}.pth".format(epoch)))
+            torch.save(G.state_dict(), os.path.join(pth_path, "G_mpreds_{}.pth".format(epoch)))
 
         torch.save(G.state_dict(), os.path.join(pth_path, "G_mpreds.pth"))
-        wandb.log({"G train loss":running_g_loss}) 
+        wandb.log({"G train loss": running_g_loss})
 
         g_list_losses.append(running_g_loss)
 
         disp_batch_size = 1
-        #idxs_val = [0, 300, 179, 220] + random.sample(range(0, len(val_data)), 4)
+        # idxs_val = [0, 300, 179, 220] + random.sample(range(0, len(val_data)), 4)
         idxs_val = random.sample(range(0, len(val_data)), 1)
         print("idxs_val:")
         print(idxs_val)
@@ -468,10 +420,8 @@ def train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, ba
         path = os.path.join(preds_save_dir, "images_val_epoch={}_i={}.png".format(epoch, i))
         pred_and_save(G, val_dataloader, path, device)
 
-        #idxs_train = [0, 300, 179, 220, 500, 600, 2000, 4000] 
+        # idxs_train = [0, 300, 179, 220, 500, 600, 2000, 4000]
         idxs_train = random.sample(range(0, len(training_data)), 1)
-
-
 
         train_subset_data = torch.utils.data.Subset(training_data, idxs_train)
         train_sub_dataloader = DataLoader(train_subset_data, disp_batch_size, shuffle=False)
@@ -487,12 +437,6 @@ def train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, ba
         cur_instance_epoch += 1
 
 
-
-
-
-
-
-
 def get_args_parser():
     parser = argparse.ArgumentParser('', add_help=False)
     parser.add_argument('--train_path', type=str, default="data/train_data")
@@ -504,6 +448,7 @@ def get_args_parser():
 
     return parser
 
+
 def show(imgs):
     if not isinstance(imgs, list):
         imgs = [imgs]
@@ -514,6 +459,7 @@ def show(imgs):
         axs[0, i].imshow(np.asarray(img))
         axs[0, i].set(xticklabels=[], yticklabels=[], xticks=[], yticks=[])
     plt.show()
+
 
 if __name__ == "__main__":
     wandb.init(project='colorization_n_preds_evol', entity='bkw1')
@@ -529,7 +475,6 @@ if __name__ == "__main__":
     training_data = AnimeDataset(args.train_path, gs_transform=gs_trans, cl_transform=color_trans)
     val_data = AnimeDataset(args.val_path, gs_transform=gs_trans, cl_transform=color_trans)
 
-    # epochs_num
     epochs_num = 500
 
     lr = 0.0002
@@ -538,7 +483,6 @@ if __name__ == "__main__":
     preds_save_path = args.preds_path
     start_epoch = args.start_epoch
 
-    #gen_loss
     gen_loss = generator_loss
 
     batch_size = 16
@@ -549,7 +493,6 @@ if __name__ == "__main__":
     print("ngf:", ngf)
     print("batch_size:", batch_size)
 
-    #G
     if args.G_path == "":
         print("New G")
         G = UnetGenerator(1, 3, n_layers, kernel_size=4, stride=2, ngf=ngf, n_preds=n_preds)
@@ -561,8 +504,8 @@ if __name__ == "__main__":
     pytorch_total_params = sum(p.numel() for p in G.parameters())
     print("number of model parameters:", pytorch_total_params)
 
-    #g_optimizer
     g_optimizer = torch.optim.Adam(G.parameters(), lr=lr, betas=(beta1, 0.999))
 
-    train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, batch_size, args.preds_path, n_preds=n_preds,
+    train_loop(training_data, val_data, epochs_num, G, g_optimizer, gen_loss, batch_size, args.preds_path,
+               n_preds=n_preds,
                start_epoch=args.start_epoch, pth_path="")
